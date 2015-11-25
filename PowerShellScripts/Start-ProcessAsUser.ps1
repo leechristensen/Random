@@ -31,6 +31,10 @@ Specifies the Password
 
 Specifies the command to execute
 
+.PARAMETER NetOnly
+
+Start the process using the LOGON_NETCREDENTIALS_ONLY flag (equivalent of running "runas.exe /netonly")
+
 .EXAMPLE
 
 Start-ProcessAsUser -Domain corpwest.local -Username itadmin -Password MyPassword -Cmd "powershell.exe -noexit -C get-process"
