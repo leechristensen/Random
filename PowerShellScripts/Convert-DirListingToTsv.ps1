@@ -9,7 +9,8 @@ Optional Dependencies: None
 
 .DESCRIPTION
 Parses the out the output the command prompt's "dir" command into a tab delimited file.
-The file can then be searched or sorted to identify recently accessed files.  The "dir"
+The file can then be searched or sorted to identify recently accessed files.  Useful
+in certain scenarios where the "dir" command is faster than Get-ChildItem.
 
 .EXAMPLE
 cmd.exe /c dir /s /a \\fileshare\allusers > files.txt; Convert-DirListingToTsv -InputFile .\files.txt -OutputFile .\files.csv
