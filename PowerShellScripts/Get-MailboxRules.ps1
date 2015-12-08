@@ -1,25 +1,24 @@
 <#
 Author: Lee Christensen (@tifkin_)
+Edited by: Josh M. Bryant (@FixTheExchange)
 License: BSD 3-Clause
-Required Dependencies: None
+Required Dependencies: EWS API 2.2 https://www.microsoft.com/en-us/download/details.aspx?id=42951
 Optional Dependencies: None
 #>
 
-Import-Module -Name "C:\Program Files\Microsoft\Exchange\Web Services\2.2\Microsoft.Exchange.WebServices.dll"
+Add-Type -Path 'C:\Program Files\Microsoft\Exchange\Web Services\2.2\Microsoft.Exchange.WebServices.dll'
 
 if(!$Creds)
 {
-    $Creds = $Host.UI.PromptForCredential("Credentials", "Please enter your email/password", "", "").GetNetworkCredential()
+    $Creds = Get-Credential
 }
 $emailAddress = $Creds.UserName
 $password = $Creds.Password
 
-$exchService = New-Object Microsoft.Exchange.WebServices.Data.ExchangeService([Microsoft.Exchange.WebServices.Data.ExchangeVersion]::Exchange2013_SP1, [System.TimeZoneInfo]::Local)
-
-$exchService.Credentials = new-object System.Net.NetworkCredential($UserName, $password, "") 
-#$exchService.AutodiscoverUrl($email, {$true})
-
-$exchService.Url = New-Object System.Uri("https://outlook.office365.com/EWS/Exchange.asmx") 
+$exchService = New-Object Microsoft.Exchange.WebServices.Data.ExchangeService
+$exchService.Credentials = New-Object Microsoft.Exchange.WebServices.Data.WebCredentials -ArgumentList $emailAddress, $password
+#Autodiscover, there is no other, way to decide where you're mailbox is stored...
+$exchService.AutodiscoverUrl($emailAddress, {$true})
 
 $mbx = New-Object Microsoft.Exchange.WebServices.Data.Mailbox($emailAddress)
 
