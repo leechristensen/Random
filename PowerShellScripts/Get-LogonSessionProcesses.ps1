@@ -4,8 +4,6 @@ License: BSD 3-Clause
 Required Dependencies: None
 Optional Dependencies: None
 
-Disoc
-
 Example:
 
 Gets all processes started in a logon session with a logon type of 9 (NewCredential)
