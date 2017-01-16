@@ -1,4 +1,9 @@
 <#
+Author: Lee Christensen (@tifkin_)
+License: BSD 3-Clause
+Required Dependencies: None
+Optional Dependencies: None
+
 .Synopsis
    Returns all the Windows events in a given time period
 .DESCRIPTION
@@ -6,6 +11,7 @@
 .EXAMPLE
    Get-AllWinEvents (Get-Date).AddMinutes(-2)
 #>
+
 function Get-AllWinEvents
 {
     [CmdletBinding()]
