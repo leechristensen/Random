@@ -139,7 +139,7 @@ function Test-PuttyConnectionSharing {
     }
 }
 
-function Get-PuttyConfig {
+function Get-PuttyConfiguration {
     [OutputType('HashTable[]')]
     [CmdletBinding()]
     Param (
