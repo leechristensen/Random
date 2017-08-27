@@ -2,7 +2,7 @@ function Get-AppId {
 <#
 .SYNOPSIS
 
-Returns refeneces to AppIDs found in the registry.
+Returns references to AppIDs found in the registry.
 
 Author: Lee Christensen (@tifkin_)  
 License: BSD 3-Clause  
