@@ -19,17 +19,13 @@ reference non-existent AppId GUIDs.
 TODO: Handle settings in HKCR\Appid\<ExecutableName>. I've only seen one example of this: HKCR\AppId\slui.exe\IsFlighted
 TODO: Is HKEY_CLASSES_ROOT\Classes\AppID\ a valid location for AppIds? I've only seen one application use it - Intel's graphics driver.
 
-.PARAMETER StartKey
+.PARAMETER Id
 
-Location the script should begin searching from.
-
-.PARAMETER ComputerName
-
-Specifies the system to search.
+Specifies the AppId to return.
 
 .EXAMPLE
 
-Find-RegistrySecurityDescriptors -StartKey 'HKLM:\'
+Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
 
 #>
     [CmdletBinding()]
