@@ -34,7 +34,7 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
         [Guid[]]
         $Id
     )
-
+    
     # Documented AppId settings: https://msdn.microsoft.com/en-us/library/windows/desktop/ms682359(v=vs.85).aspx
     # Doing this because some AppIds use undocumented settings
     $DocumentedAppIdsettings = @('','accesspermission','activateatstorage','appid','appidflags','authenticationlevel','dllsurrogate','dllsurrogateexecutable','endpoints','launchpermission','loadusersettings','localservice','preferredserverbitness','remoteservername','rotflags','runas','serviceparameters','srptrustlevel')
@@ -77,25 +77,24 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
             $AppidClsidMap[$AppId] = $null
         }
     }
-    
     if($Id) {
         $AppIdArray = New-Object System.Collections.ArrayList
         foreach($AppId in $Id) {
             $AppIdGuidStr = "{$AppId}"
-            if($AppIdGuidStr -in $AppidClsidMap.Keys) {
+            if($AppidClsidMap.Keys -contains $AppIdGuidStr) {
                 $null = $AppIdArray.Add($AppIdGuidStr)
             } else {
                 Write-Error "No references to the AppId $AppId exist."
             }
         }
     } else {
-        $AppIdArray = $AppidClsidMap.Keys
+       $AppIdArray = $AppidClsidMap.Keys
     }
-
+    
     foreach($AppId in $AppIdArray) {
         $AppIdKey = Get-Item "Registry::HKEY_CLASSES_ROOT\AppId\$($AppId)" -ErrorAction SilentlyContinue
         $AppIdIsRegistered = $AppIdKey -ne $null
-
+        
         $Output = @{
             Clsid = $AppidClsidMap[$AppId]
             NamedExecutable = $AppidExecutableNameMapping[$AppId]
@@ -103,7 +102,7 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
             Name = $null
             UnknownSettings = $null
             UnknownSubKeys = $null
-
+    
             # Documented Settings
             AccessPermission = $null
             ActivateAtStorage = $null
@@ -123,13 +122,13 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
             ServiceParameters = $null
             SRPTrustLevel = $null
         }
-
-
+        
+    
         if($AppIdIsRegistered) {
             
             # Grab the settings
             foreach($ValueName in $AppIdKey.GetValueNames()) {
-                if($ValueName.ToLower() -in $DocumentedAppIdsettings) {
+                if($DocumentedAppIdsettings -contains ($ValueName.ToLower())) {
                     if($ValueName -eq '') {
                         $Output['Name'] = $AppIdKey.GetValue('')
                     } else {
@@ -143,31 +142,31 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
                     $Output['UnknownSettings'][$ValueName] = $AppIdKey.GetValue($ValueName)
                 }
             }
-
+    
             # Deal with any subkeys
             if($AppIdKey.SubKeyCount -gt 0) {
                 foreach($SubKeyName in $AppIdKey.GetSubKeyNames()) {
                     # Sometime apps register these settings in the subkeys instead of the registry value
                     if($SubKeyName -eq 'LaunchPermission' -or $SubKeyName -eq 'AccessPermission') {
                         $SubKey = $AppIdKey.OpenSubKey($SubKeyName)
-
+    
                         if($Output[$SubKeyName]) {
                             Write-Warning "The AppId $AppId defines two $SubKeyName values. Not going to return the value defined in the $SubKeyName SubKey."
                         } else {
                             $Output[$SubKeyName] = $SubKey.GetValue('')
                         }
-
+    
                     } else {
                         if(!$Output['UnknownSubKeys']) {
                             $Output['UnknownSubKeys'] = @()
                         }
-
+    
                         $Output['UnknownSubKeys'] += $SubKeyName
                     }
                 }
             }
         }
-
+    
         New-Object -TypeName PSObject -Property $Output
-    }
+    } 
 }
