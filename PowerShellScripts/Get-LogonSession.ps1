@@ -57,6 +57,7 @@ function Get-LogonSession
             InstallDate = $_.InstallDate
             Name = $_.Name
             StartTime = $_.ConvertToDateTime($_.StartTime)
+            ComputerName = $_.PSComputerName
         }
     }
 }
