@@ -7,8 +7,15 @@ Optional Dependencies: None
 
 function Get-LogonSession
 {
+    [CmdletBinding()]
+    Param(
+        [ValidateNotNullOrEmpty()]
+        [string[]]
+        $ComputerName = 'localhost'
+    )
+
     $LogonMap = @{}
-    Get-WmiObject Win32_LoggedOnUser  | %{
+    Get-WmiObject -ComputerName $ComputerName -Class Win32_LoggedOnUser  | %{
     
         $Identity = $_.Antecedent | Select-String 'Domain="(.*)",Name="(.*)"'
         $LogonSession = $_.Dependent | Select-String 'LogonId="(\d+)"'
@@ -19,7 +26,7 @@ function Get-LogonSession
         }
     }
 
-    Get-WmiObject Win32_LogonSession | %{
+    Get-WmiObject -ComputerName $ComputerName -Class Win32_LogonSession | %{
         $LogonType = $Null
         switch($_.LogonType) {
             $null {$LogonType = 'None'}
