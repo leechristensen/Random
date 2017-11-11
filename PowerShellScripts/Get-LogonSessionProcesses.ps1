@@ -17,10 +17,7 @@ Get-LogonSessionProcesses $a
 function Get-LogonSession
 {
     [CmdletBinding()]
-    [Alias()]
-    Param
-    (
-        # Param1 help description
+    Param(
         [Parameter(ValueFromPipelineByPropertyName=$true,
                    Position=0)]
         [int]
@@ -38,9 +35,7 @@ function Get-LogonSession
 function Get-LogonSessionProcesses
 {
     [CmdletBinding()]
-    [Alias()]
-    Param
-    (
+    Param(
         [Parameter(Mandatory=$true,
                    ValueFromPipelineByPropertyName=$true,
                    Position=0)]
