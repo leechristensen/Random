@@ -21,11 +21,11 @@ function Get-LogonSession
         [Parameter(ValueFromPipelineByPropertyName=$true,
                    Position=0)]
         [int]
-        $LogonType
+        $Type
     )
 
-    if($LogonType) {
-        Get-WmiObject Win32_LogonSession -Filter "LogonType=$LogonType" 
+    if($Type) {
+        Get-WmiObject Win32_LogonSession -Filter "LogonType=$Type" 
     } else {
         Get-WmiObject Win32_LogonSession
     }
@@ -39,7 +39,8 @@ function Get-LogonSessionProcesses
         [Parameter(Mandatory=$true,
                    ValueFromPipelineByPropertyName=$true,
                    Position=0)]
-        $LogonId
+        [int[]]
+        $Id
     )
   
     foreach($Id in $LogonId)
