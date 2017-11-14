@@ -1,3 +1,4 @@
+
 function Get-AppId {
 <#
 .SYNOPSIS
@@ -32,8 +33,17 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
     Param (
         [Parameter(Mandatory = $false)]
         [Guid[]]
-        $Id
+        $Id,
+
+        [switch]
+        $X86
     )
+
+    if($X86) {
+        $BasePath = "Registry::HKEY_CLASSES_ROOT\WOW6432Node"
+    } else {
+        $BasePath = "Registry::HKEY_CLASSES_ROOT"
+    }
     
     # Documented AppId settings: https://msdn.microsoft.com/en-us/library/windows/desktop/ms682359(v=vs.85).aspx
     # Doing this because some AppIds use undocumented settings
@@ -45,7 +55,7 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
 
     # Get CLSIDs with registered AppIds.
     $AppidClsidMap = @{}
-    Get-ItemProperty -Path Registry::HKEY_CLASSES_ROOT\CLSID\* -Name AppId -ErrorAction SilentlyContinue | Where-Object { $_.AppId.Trim() -ne '' } | ForEach-Object {
+    Get-ItemProperty -Path "$BasePath\CLSID\*" -Name AppId -ErrorAction SilentlyContinue | Where-Object { $_.AppId.Trim() -ne '' } | ForEach-Object {
         if($AppidClsidMap[$_.AppId]) {
             $AppidClsidMap[$_.AppId] += $_.PSChildName
         } else {
@@ -54,7 +64,7 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
     }
 
     # Registered AppIds
-    $RegisteredAppIds = (Get-Item 'Registry::HKEY_CLASSES_ROOT\AppId\').GetSubKeyNames() | Where-Object {$_.StartsWith('{')}
+    $RegisteredAppIds = (Get-Item "$BasePath\AppId\").GetSubKeyNames() | Where-Object {$_.StartsWith('{')}
     foreach($RegisteredAppId in $RegisteredAppIds) {
         if(!$AppidClsidMap[$RegisteredAppId]) {
             $AppidClsidMap[$RegisteredAppId] = $null
@@ -64,7 +74,7 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
 
     # AppId executable names.
     $AppidExecutableNameMapping = @{}
-    Get-ItemProperty -Path Registry::HKEY_CLASSES_ROOT\AppId\* -Name AppId -ErrorAction SilentlyContinue | Where-Object { $_.AppId.Trim() -ne '' } | ForEach-Object {
+    Get-ItemProperty -Path "$BasePath\AppId\*" -Name AppId -ErrorAction SilentlyContinue | Where-Object { $_.AppId.Trim() -ne '' } | ForEach-Object {
         if($AppidExecutableNameMapping[$_.AppId]) {
             $AppidExecutableNameMapping[$_.AppId] += $_.PSChildName
         } else {
@@ -77,6 +87,7 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
             $AppidClsidMap[$AppId] = $null
         }
     }
+
     if($Id) {
         $AppIdArray = New-Object System.Collections.ArrayList
         foreach($AppId in $Id) {
@@ -92,18 +103,18 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
     }
     
     foreach($AppId in $AppIdArray) {
-        $AppIdKey = Get-Item "Registry::HKEY_CLASSES_ROOT\AppId\$($AppId)" -ErrorAction SilentlyContinue
-        $AppIdIsRegistered = $AppIdKey -ne $null
+        $AppIdKey = Get-Item "$BasePath\AppId\$($AppId)" -ErrorAction SilentlyContinue
+        $HasAppIdKey = $AppIdKey -ne $null
         
-        $Output = @{
+        $Output = [ordered]@{
             Clsid = $AppidClsidMap[$AppId]
             NamedExecutable = $AppidExecutableNameMapping[$AppId]
-            IsRegistered = $AppIdIsRegistered
+            HasAppIdKey = $HasAppIdKey
             Name = $null
             UnknownSettings = $null
             UnknownSubKeys = $null
     
-            # Documented Settings
+            # Documented Settings - https://msdn.microsoft.com/en-us/library/windows/desktop/ms682359(v=vs.85).aspx
             AccessPermission = $null
             ActivateAtStorage = $null
             AppId = $AppId
@@ -124,7 +135,7 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
         }
         
     
-        if($AppIdIsRegistered) {
+        if($HasAppIdKey) {
             
             # Grab the settings
             foreach($ValueName in $AppIdKey.GetValueNames()) {
@@ -169,4 +180,180 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
     
         New-Object -TypeName PSObject -Property $Output
     } 
+}
+
+function Get-DcomObject {
+    [CmdletBinding(DefaultParameterSetName = 'AppId')]
+    Param(
+        [Parameter(Mandatory = $true, ParameterSetName='AppId')]
+        [ValidateNotNullOrEmpty()]
+        [Guid]
+        $AppId,
+
+        [Parameter(Mandatory = $true, ParameterSetName='ProgId')]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $ProgId,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $ComputerName = 'localhost'
+    )
+
+    try {
+        if($AppId) {
+            $Type = [Type]::GetTypeFromCLSID("{$($AppId)}", $ComputerName)
+        } else {
+            $Type = [Type]::GetTypeFromProgID($ProgId, $ComputerName)
+        }
+        
+        [Activator]::CreateInstance($Type)
+    } catch {
+        Write-Error $_
+    }
+}
+
+
+<#Additional interesting fields
+LocalServicePath = $null       # If LocalService is defined, get the path to the service executable
+LocalServiceIsDotNet = $null
+DllSurrogateExecutablePath
+DllSurrogateExecutableIsDotNet
+DllSurrogatePath = $null
+DllSurrogateIsDotNet = $null
+
+Get the clsid associated with DCOM object and check the LocalServer32, LocalServer, or LocalService values/keys to see if they're dot net apps
+
+
+
+#>
+
+function Test-DotNetAssembly {
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $Path
+    )
+
+    Begin {
+    }
+
+    Process {
+        try {
+            $null = [System.Reflection.AssemblyName]::GetAssemblyName($Path)
+            $true
+        } catch {
+            $false
+        }
+    }
+}
+
+# TODO: Can we exploit managed DLLs in a DllSurrogate process?
+# Note: I ignore LocalServer (not LocalServer32).  I've yet to see a 16-bit COM server
+function Get-ExploitableDCOMApplications {
+    [CmdletBinding()]
+    Param(
+    [switch]
+        $X86
+    )
+
+    if($X86) {
+        $BasePath = "Registry::HKEY_CLASSES_ROOT\WOW6432Node"
+    } else {
+        $BasePath = "Registry::HKEY_CLASSES_ROOT"
+    }
+
+    $AppIds = Get-AppId @PSBoundParameters
+
+    foreach($AppId in $AppIds) {
+        
+        if($AppId.LocalService) {
+            # TODO: Account for service DLLs
+            $ServiceCommandLine = (Get-WmiObject Win32_Service -Filter "name='$($AppId.LocalService)'" -Property PathName -ErrorAction SilentlyContinue).PathName
+            $ServiceExePath = Get-PathFromCommandLine -CommandLine $ServiceCommandLine
+
+            if(Test-DotNetAssembly $ServiceExePath) {
+                New-Object PSObject -Property @{
+                    AppId = $AppId.AppId
+                    Clsid = $AppId.Clsid
+                    LocalServer32 = $null
+                    Service = $AppId.LocalService
+                    ServicePath = $ServiceExePath
+                }
+            }
+        }
+
+        # If no service, check out-of-proc COM servers
+        if($AppId.Clsid -and $AppId.LocalService -eq $null) {
+            foreach($Clsid in $AppId.Clsid) {
+                $LocalServer32 = (Get-ItemProperty "$BasePath\CLSID\$($AppId.Clsid)\LocalServer32" -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
+                $LocalServer32PEPath = Get-PathFromCommandLine -CommandLine $LocalServer32
+
+
+                if(Test-DotNetAssembly $LocalServer32PEPath) {
+                    New-Object PSObject -Property @{
+                        AppId = $AppId.AppId
+                        Clsid = $AppId.Clsid
+                        #LocalServer = $LocalServer
+                        LocalServer32 = $LocalServer32PEPath
+                        Service = $null
+                        ServicePath = $null
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+function Get-PathFromCommandLine
+{
+    Param
+    (
+        [Parameter(Position = 0, Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $CommandLine
+    )
+
+    Begin {
+    }
+
+    Process {
+
+        if(Test-Path -Path $CommandLine -ErrorAction SilentlyContinue)
+        {
+            $CommandLine
+        }
+        else
+        {
+             if($CommandLine.StartsWith('"')) {
+                 if($CommandLine -match '^"(?<path>.+?)"') { 
+                    $Matches['path']
+                 } else {
+                    Write-Error "Could not find path for command line that has quotes: $CommandLine"
+                 }
+             } else {
+                $PathParts = $CommandLine -split ' '
+                $Path = $null
+                for($i=0; $i -lt $PathParts.Length; $i++) {
+                    $TempPath = $PathParts[0..$i] -join ' '
+
+                    if([System.IO.File]::Exists($TempPath)) {
+                        $Path = $TempPath
+                        break
+                    } 
+                }
+
+                if($Path) {
+                    $Path
+                } else {
+                    Write-Error "Could not find path for command line with no quotes: $CommandLine"
+                }
+             }
+        }
+    }
 }
