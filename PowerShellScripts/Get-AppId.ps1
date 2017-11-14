@@ -3,7 +3,7 @@ function Get-AppId {
 <#
 .SYNOPSIS
 
-Returns references to AppIDs found in the registry.
+Returns references to AppIDs (aka DCOM servers) found in the registry.
 
 Author: Lee Christensen (@tifkin_)  
 License: BSD 3-Clause  
@@ -50,8 +50,9 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
     $DocumentedAppIdsettings = @('','accesspermission','activateatstorage','appid','appidflags','authenticationlevel','dllsurrogate','dllsurrogateexecutable','endpoints','launchpermission','loadusersettings','localservice','preferredserverbitness','remoteservername','rotflags','runas','serviceparameters','srptrustlevel')
 
 
-    # AppIds are referenced in 3 locations: CLSIDs(HKCR\CLSID\<CLSID>!AppId, the AppId key(HKCR\AppId\<AppIdGuid>, and the AppId name(HKCR\AppId\<AppIdExeName>!AppId).
-    # Just becausue a reference to an AppId does not guarantee the AppId exists. We want to know about all refences to AppIds, so let's get them all
+    # AppIds are referenced in 3 locations: CLSIDs(HKCR\CLSID\<CLSID>!AppId, the AppId key(HKCR\AppId\<AppIdGuid>, and the AppId name(HKCR\AppId\<AppIdExeName>!AppId).  Maybe HKEY_CLASSES_ROOT\Classes\AppID\ as well.
+    # Just because a reference to an AppId exists does not guarantee the AppId exists. I want to know about all refences to AppIds, so let's get them all whether they're valid or not.
+    # The HasAppIdKey property indicates that it's a valid AppId
 
     # Get CLSIDs with registered AppIds.
     $AppidClsidMap = @{}
@@ -182,6 +183,7 @@ Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
     } 
 }
 
+
 function Get-DcomObject {
     [CmdletBinding(DefaultParameterSetName = 'AppId')]
     Param(
@@ -215,20 +217,6 @@ function Get-DcomObject {
 }
 
 
-<#Additional interesting fields
-LocalServicePath = $null       # If LocalService is defined, get the path to the service executable
-LocalServiceIsDotNet = $null
-DllSurrogateExecutablePath
-DllSurrogateExecutableIsDotNet
-DllSurrogatePath = $null
-DllSurrogateIsDotNet = $null
-
-Get the clsid associated with DCOM object and check the LocalServer32, LocalServer, or LocalService values/keys to see if they're dot net apps
-
-
-
-#>
-
 function Test-DotNetAssembly {
     [CmdletBinding()]
     Param(
@@ -251,9 +239,38 @@ function Test-DotNetAssembly {
     }
 }
 
-# TODO: Can we exploit managed DLLs in a DllSurrogate process?
-# Note: I ignore LocalServer (not LocalServer32).  I've yet to see a 16-bit COM server
-function Get-ExploitableDCOMApplications {
+
+function Get-ExploitableDCOMServers {
+<#
+.SYNOPSIS
+
+Returns references to AppIDs (aka DCOM servers) whose backing PE file is a .NET assembly.
+
+Author: Lee Christensen (@tifkin_)  
+License: BSD 3-Clause  
+Required Dependencies: None  
+
+.DESCRIPTION
+
+Returns references to AppIDs (aka DCOM servers) whose backing PE file is a .NET
+assemlby. An attacker leverage them to elevate privileges or as an alternative 
+remote code execution technique. See James Forshaw's work at the follow URLs
+for more information:
+
+https://github.com/tyranid/ExploitDotNetDCOM
+https://bugs.chromium.org/p/project-zero/issues/detail?id=1075
+
+TODO: Can we exploit managed DLLs in a DllSurrogate processes?
+
+.PARAMETER X86
+
+Search for X86 AppId/Clsid.
+
+.EXAMPLE
+
+Get-AppId -Id '{00020800-0000-0000-C000-000000000046}'
+
+#>
     [CmdletBinding()]
     Param(
     [switch]
@@ -273,16 +290,22 @@ function Get-ExploitableDCOMApplications {
         if($AppId.LocalService) {
             # TODO: Account for service DLLs
             $ServiceCommandLine = (Get-WmiObject Win32_Service -Filter "name='$($AppId.LocalService)'" -Property PathName -ErrorAction SilentlyContinue).PathName
-            $ServiceExePath = Get-PathFromCommandLine -CommandLine $ServiceCommandLine
+            if($ServiceCommandLine -and $ServiceCommandLine -ne [String]::Empty) {
+                $ServiceExePath = Resolve-CommandLineToFilePath -CommandLine $ServiceCommandLine
 
-            if(Test-DotNetAssembly $ServiceExePath) {
-                New-Object PSObject -Property @{
-                    AppId = $AppId.AppId
-                    Clsid = $AppId.Clsid
-                    LocalServer32 = $null
-                    Service = $AppId.LocalService
-                    ServicePath = $ServiceExePath
+                if($ServiceExePath.Path) {
+                    if(Test-DotNetAssembly $ServiceExePath.Path) {
+                        New-Object PSObject -Property @{
+                            AppId = $AppId.AppId
+                            Clsid = $AppId.Clsid
+                            LocalServer32 = $null
+                            Service = $AppId.LocalService
+                            ServicePath = $ServiceExePath.Path
+                        }
+                    }
                 }
+            } else {
+                Write-Error "AppId $($AppId.AppId) uses the service $($AppId.LocalService). However, the path to the service's executable could not be found"
             }
         }
 
@@ -290,17 +313,22 @@ function Get-ExploitableDCOMApplications {
         if($AppId.Clsid -and $AppId.LocalService -eq $null) {
             foreach($Clsid in $AppId.Clsid) {
                 $LocalServer32 = (Get-ItemProperty "$BasePath\CLSID\$($AppId.Clsid)\LocalServer32" -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
-                $LocalServer32PEPath = Get-PathFromCommandLine -CommandLine $LocalServer32
+                
+                if($LocalServer32 -and $LocalServer32 -ne [String]::Empty) {
+                    $LocalServer32PEPath = Resolve-CommandLineToFilePath -CommandLine $LocalServer32
 
-
-                if(Test-DotNetAssembly $LocalServer32PEPath) {
-                    New-Object PSObject -Property @{
-                        AppId = $AppId.AppId
-                        Clsid = $AppId.Clsid
-                        #LocalServer = $LocalServer
-                        LocalServer32 = $LocalServer32PEPath
-                        Service = $null
-                        ServicePath = $null
+                    if($LocalServer32PEPath.Path) {
+                        if(Test-DotNetAssembly -Path $LocalServer32PEPath.Path) {
+                            New-Object PSObject -Property @{
+                                AppId = $AppId.AppId
+                                Clsid = $AppId.Clsid
+                                LocalServer32 = $LocalServer32PEPath.Path
+                                Service = $null
+                                ServicePath = $null
+                            }
+                        }
+                    } else {
+                        Write-Error "Clsid $Clsid registers a LocalServer32 key that refers to a non-existant COM server. LocalServer32: $LocalServer32"
                     }
                 }
             }
@@ -309,51 +337,148 @@ function Get-ExploitableDCOMApplications {
 }
 
 
-function Get-PathFromCommandLine
+function Resolve-CommandLineToFilePath
 {
-    Param
+    <#
+    .SYNOPSIS
+
+    The Resolve-CommandLineToFilePath function takes an arbitrary Command Line and resolves the called application/file's path.
+
+    .PARAMETER CommandLine
+
+    The CommandLine that you want to convert to a file path.
+
+    .NOTES
+    
+    Author: Jared Atkinson (@jaredcatkinson)
+    License: BSD 3-Clause
+    Required Dependencies: PSReflect
+    Optional Dependencies: None
+    TODO: WorkingDirectory and EnvironmentVariable parameters
+    TODO: Throw error if no FilePath is found
+
+    .EXAMPLE
+    Resolve-CommandLineToFilePath -CommandLine '%windir%\system32\rundll32.exe'
+    
+    CommandLine                    Path
+    -----------                    ----
+    %windir%\system32\rundll32.exe C:\WINDOWS\system32\rundll32.exe
+
+    .EXAMPLE
+    'cmd' | Resolve-CommandLineToFilePath
+
+    CommandLine Path
+    ----------- ----
+    cmd         C:\WINDOWS\system32\cmd.EXE
+
+    .EXAMPLE
+    (Get-WmiObject -Class win32_service).PathName | Resolve-CommandLineToFilePath
+
+    CommandLine                                                                               Path
+    -----------                                                                               ----
+    C:\Windows\SysWOW64\Macromed\Flash\FlashPlayerUpdateService.exe                           C:\Windows\SysWOW64\Macromed\Flash\...
+    C:\WINDOWS\system32\svchost.exe -k LocalServiceNetworkRestricted                          C:\WINDOWS\system32\svchost.exe
+    C:\WINDOWS\System32\alg.exe                                                               C:\WINDOWS\System32\alg.exe
+    C:\WINDOWS\system32\svchost.exe -k LocalServiceNetworkRestricted                          C:\WINDOWS\system32\svchost.exe
+    C:\WINDOWS\system32\svchost.exe -k netsvcs                                                C:\WINDOWS\system32\svchost.exe
+    C:\WINDOWS\system32\svchost.exe -k netsvcs                                                C:\WINDOWS\system32\svchost.exe
+    C:\WINDOWS\System32\svchost.exe -k AppReadiness                                           C:\WINDOWS\System32\svchost.exe
+    C:\WINDOWS\system32\AppVClient.exe                                                        C:\WINDOWS\system32\AppVClient.exe
+    C:\WINDOWS\system32\svchost.exe -k wsappx                                                 C:\WINDOWS\system32\svchost.exe
+    C:\WINDOWS\Microsoft.NET\Framework64\v4.0.30319\aspnet_state.exe                          C:\WINDOWS\Microsoft.NET\Framework6...
+    C:\WINDOWS\System32\svchost.exe -k LocalSystemNetworkRestricted                           C:\WINDOWS\System32\svchost.exe
+    C:\WINDOWS\System32\svchost.exe -k LocalServiceNetworkRestricted                          C:\WINDOWS\System32\svchost.exe
+    C:\WINDOWS\system32\svchost.exe -k AxInstSVGroup                                          C:\WINDOWS\system32\svchost.exe
+    C:\WINDOWS\System32\svchost.exe -k netsvcs                                                C:\WINDOWS\System32\svchost.exe
+    C:\WINDOWS\system32\svchost.exe -k LocalServiceNoNetwork                                  C:\WINDOWS\system32\svchost.exe
+    C:\WINDOWS\System32\svchost.exe -k netsvcs                                                C:\WINDOWS\System32\svchost.exe
+    C:\WINDOWS\system32\svchost.exe -k DcomLaunch                                             C:\WINDOWS\system32\svchost.exe
+    C:\WINDOWS\System32\svchost.exe -k netsvcs                                                C:\WINDOWS\System32\svchost.exe
+    C:\WINDOWS\System32\svchost.exe -k LocalServiceAndNoImpersonation                         C:\WINDOWS\System32\svchost.exe
+    C:\WINDOWS\system32\svchost.exe -k LocalService                                           C:\WINDOWS\system32\svchost.exe
+    C:\WINDOWS\system32\svchost.exe -k LocalService                                           C:\WINDOWS\system32\svchost.exe
+    C:\WINDOWS\system32\svchost.exe -k netsvcs                                                C:\WINDOWS\system32\svchost.exe
+    "C:\Program Files\Common Files\Microsoft Shared\ClickToRun\OfficeClickToRun.exe" /service C:\Program Files\Common Files\Micro...
+    C:\WINDOWS\System32\svchost.exe -k wsappx                                                 C:\WINDOWS\System32\svchost.exe
+    C:\WINDOWS\system32\dllhost.exe /Processid:{02D4B3F1-FD88-11D1-960D-00805FC79235}         C:\WINDOWS\system32\dllhost.exe
+    C:\WINDOWS\system32\svchost.exe -k LocalServiceNoNetwork                                  C:\WINDOWS\system32\svchost.exe
+    C:\WINDOWS\system32\svchost.exe -k NetworkService                                         C:\WINDOWS\system32\svchost.exe
+    #>
+    [CmdletBinding()]
+    param
     (
-        [Parameter(Position = 0, Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
-        [ValidateNotNullOrEmpty()]
-        [string]
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [string[]]
         $CommandLine
     )
 
-    Begin {
-    }
-
-    Process {
-
-        if(Test-Path -Path $CommandLine -ErrorAction SilentlyContinue)
+    process
+    {
+        foreach($command in $CommandLine)
         {
-            $CommandLine
-        }
-        else
-        {
-             if($CommandLine.StartsWith('"')) {
-                 if($CommandLine -match '^"(?<path>.+?)"') { 
-                    $Matches['path']
-                 } else {
-                    Write-Error "Could not find path for command line that has quotes: $CommandLine"
-                 }
-             } else {
-                $PathParts = $CommandLine -split ' '
-                $Path = $null
-                for($i=0; $i -lt $PathParts.Length; $i++) {
-                    $TempPath = $PathParts[0..$i] -join ' '
+            $props = @{
+                 CommandLine = $command
+                 Path = $null
+            }
 
-                    if([System.IO.File]::Exists($TempPath)) {
-                        $Path = $TempPath
-                        break
-                    } 
-                }
+            # Expand Environment Variable
+            $command = [System.Environment]::ExpandEnvironmentVariables($command)
+            
+            # Remove Quotes from the Path
+            $command = $command.Replace('"','')
 
-                if($Path) {
-                    $Path
-                } else {
-                    Write-Error "Could not find path for command line with no quotes: $CommandLine"
+            if(Test-Path -Path $command -PathType Leaf)
+            {
+                $props['Path'] = $command
+            }
+            else
+            {
+                $sb = New-Object -TypeName System.Text.StringBuilder
+        
+                # We are going to split the command line on spaces and test each iteration
+                :outer foreach($pathsegment in ($command -split ' ' | Where-Object { $_ }))
+                {
+                    $sb.Append($pathsegment) | Out-Null
+                    $finalpath = $sb.ToString()
+
+                    Write-Verbose "Testing: $($finalpath)"
+                    if(Test-Path -Path $finalpath -PathType Leaf)
+                    {
+                        $props['Path'] = $finalpath
+                        break outer
+                    }
+
+                    :inner foreach($pathext in ($env:PATHEXT -split ';' | Where-Object { $_ } )) 
+                    {
+                        Write-Verbose "Testing: $($finalpath)$($pathext)"
+                        if(Test-Path -Path "$($finalpath)$($pathext)" -PathType Leaf)
+                        {
+                            $props['Path'] = "$($finalpath)$($pathext)"
+                            break outer
+                        }
+
+                        :innermost foreach($path in ($env:PATH -split ';' | Where-Object { $_ } ))
+                        {
+                            Write-Verbose "Testing: $($path)\$($finalpath)"
+                            if(Test-Path -Path "$($path)\$($finalpath)" -PathType Leaf)
+                            {
+                                $props['Path'] = "$($path)\$($finalpath)"
+                                break outer
+                            }
+
+                            Write-Verbose "Testing: $($path)\$($finalpath)$($pathext)"
+                            if(Test-Path -Path "$($path)\$($finalpath)$($pathext)" -PathType Leaf)
+                            {
+                                $props['Path'] = "$($path)\$($finalpath)$($pathext)"
+                                break outer
+                            }
+                        }
+                    }
+                    $sb.Append(' ') | Out-Null
                 }
-             }
+            }
+
+            New-Object -TypeName psobject -Property $props
         }
     }
 }
