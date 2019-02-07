@@ -9,7 +9,7 @@ Example:
 Gets all processes started in a logon session with a logon type of 9 (NewCredential)
 Useful for identifying processes started with "runas.exe /netonly" or using Mimikat'z sekurlsa::pth capability
 
-$a = Get-LogonSession -LogonType 9 | select -ExpandProperty LogonId; 
+$a = Get-LogonSession -Type 9 | select -ExpandProperty LogonId; 
 Get-LogonSessionProcesses $a
 
 #>
