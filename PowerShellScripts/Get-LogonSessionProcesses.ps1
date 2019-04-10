@@ -43,8 +43,8 @@ function Get-LogonSessionProcesses
         $Id
     )
   
-    foreach($Id in $LogonId)
+    foreach($LogonId in $Id)
     {
-        Get-WmiObject -Query ("ASSOCIATORS OF {Win32_LogonSession.LogonId=$Id} WHERE ResultClass = Win32_Process")
+        Get-WmiObject -Query ("ASSOCIATORS OF {Win32_LogonSession.LogonId=$LogonId} WHERE ResultClass = Win32_Process")
     }
 }
