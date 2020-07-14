@@ -34,7 +34,7 @@ function Start-EtwTrace {
     )
 
     if((Test-Path $OutputFile -ErrorAction SilentlyContinue)) {
-        Remove-Item -Force $OutputFile -ErrorAction Stop
+        Remove-Item -Force:$Force $OutputFile -ErrorAction Stop
     }
 
     if(!(Test-Path $ProcessPath -ErrorAction SilentlyContinue)) {
