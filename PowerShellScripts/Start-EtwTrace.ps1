@@ -15,7 +15,7 @@ function Start-EtwTrace {
         $ProcessPath,
 
         [Parameter(Position=3, Mandatory=$false)]
-        [scriptblock]
+        [string]
         $ArgumentList,
 
 
@@ -44,11 +44,11 @@ function Start-EtwTrace {
     $EtwProviderGuid = $ProviderGuid
     $SessionName = 'tempLoggingProvider'
 
-
+    Write-Warning "Creating the trace session '$($SessionName)'..."
     $Session = New-EtwTraceSession -Name $SessionName -LogFileMode 0x08000100 -FlushTimer 1 -ErrorAction Stop
     $TraceProvider = Add-EtwTraceProvider -SessionName $Session.Name -Guid $EtwProviderGuid -MatchAnyKeyword 0xFFFFFFFFFFFF -Level $Level -Property $Property
     
-    
+    Write-Warning "Starting tracerpt..."
     $TraceProcess = Start-Process -PassThru tracerpt.exe -ArgumentList "-rt $($SessionName) -y -o $($OutputFile) -of EVTX" -WindowStyle Hidden
 
     sleep 1
@@ -65,9 +65,9 @@ function Start-EtwTrace {
     sleep -Milliseconds 1200  # Wait a bit for the last events to come in
 
     Write-Warning "Removing the trace session '$($SessionName)'..."
-    $TraceProcess.CloseMainWindow()
+    $null = $TraceProcess.CloseMainWindow()
 
-    Remove-EtwTraceSession -Name $SessionName
+    $null = Remove-EtwTraceSession -Name $SessionName
     Sleep 1
     
     Get-WinEvent -Path $OutputFile | sort TimeCreated 
