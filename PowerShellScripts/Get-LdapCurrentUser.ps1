@@ -100,7 +100,7 @@ Connect with Sealing enabled
             $c.AuthType = $AuthType
         }
         
-        if($PrivateKeyFile) {
+        if($Certificate) {
             $Cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 @($Certificate, $CertificatePassword, 'Exportable')
             $null = $c.ClientCertificates.Add($Cert)
         }
