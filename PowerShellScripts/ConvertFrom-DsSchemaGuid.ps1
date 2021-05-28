@@ -1,4 +1,4 @@
-function ConvertFrom-DsGuid {
+function ConvertFrom-DsSchemaGuid {
 <#
 .SYNOPSIS
 
@@ -21,7 +21,7 @@ Guid(s) to map to a name.
 
 .EXAMPLE
 
-ConvertFrom-DsGuid '3e10944d-c354-11d0-aff8-0000f80367c1'
+ConvertFrom-DsSchemaGuid '3e10944d-c354-11d0-aff8-0000f80367c1'
 
 .EXAMPLE
 
@@ -30,11 +30,11 @@ $Guids = (
     'f6d6dd88-ccee-11d2-9993-0000f87a57d4',
     '3e10944d-c354-11d0-aff8-0000f80367c1'
 )
-ConvertFrom-DsGuid $Guids 'corp.local'
+ConvertFrom-DsSchemaGuid $Guids 'corp.local'
 
 .EXAMPLE
 
-'{771727b1-31b8-4cdf-ae62-4fe39fadf89e}', 'f6d6dd88-ccee-11d2-9993-0000f87a57d4' | ConvertFrom-DsGuid
+'{771727b1-31b8-4cdf-ae62-4fe39fadf89e}', 'f6d6dd88-ccee-11d2-9993-0000f87a57d4' | ConvertFrom-DsSchemaGuid
 
 #>
     [CmdletBinding()]
