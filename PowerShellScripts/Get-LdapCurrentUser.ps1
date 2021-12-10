@@ -94,7 +94,13 @@ Verify that the server certificate is trusted
             $c = New-Object System.DirectoryServices.Protocols.LdapConnection $Ident
         }
 
-        $c.SessionOptions.SecureSocketLayer = $UseSSL;
+        if($UseSSL) {
+            $c.SessionOptions.SecureSocketLayer = $true;
+
+            if(!$Server.EndsWith(":636")) {
+                Write-Warning "Using LDAPS, but the standard LDAPS port (636) was not specified in the -Server parameter"
+            }
+        }
 
         if($Sealing) {
             $c.SessionOptions.Sealing = $true
