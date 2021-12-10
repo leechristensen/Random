@@ -42,6 +42,10 @@ Connect with Signing enabled
 
 Connect with Sealing enabled
 
+.PARAMETER VerifyServerCertificate
+
+Verify that the server certificate is trusted
+
 #>
     [CmdletBinding()]
     Param(
@@ -71,7 +75,11 @@ Connect with Sealing enabled
 
         [Parameter(Mandatory=$false)]
         [switch]
-        $Sealing = $false
+        $Sealing = $false,
+
+        [Parameter(Mandatory=$false)]
+        [switch]
+        $VerifyServerCertificate
     )
 
     try {
@@ -99,7 +107,11 @@ Connect with Sealing enabled
         if($AuthType) {
             $c.AuthType = $AuthType
         }
-        
+
+        if(!$VerifyServerCertificate) {
+            $c.SessionOptions.VerifyServerCertificate = {$true}
+        }
+
         if($Certificate) {
             $Cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 @($Certificate, $CertificatePassword, 'Exportable')
             $null = $c.ClientCertificates.Add($Cert)
@@ -108,7 +120,14 @@ Connect with Sealing enabled
         # 1.3.6.1.4.1.4203.1.11.3 = OID for LDAP_SERVER_WHO_AM_I_OID (see MS-ADTS 3.1.1.3.4.2 LDAP Extended Operations)
         $ExtRequest = New-Object System.DirectoryServices.Protocols.ExtendedRequest "1.3.6.1.4.1.4203.1.11.3"
         $resp = $c.SendRequest($ExtRequest)
-        [System.Text.Encoding]::ascii.getstring($resp.ResponseValue)
+        
+        $str = [System.Text.Encoding]::ASCII.GetString($resp.ResponseValue)
+
+        if([string]::IsNullOrEmpty($str)) {
+            Write-Error "Authentication failed"
+        } else {
+            $str
+        }
     } catch {
         Write-Error $_
     }
