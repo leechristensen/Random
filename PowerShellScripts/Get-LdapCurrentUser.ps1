@@ -47,23 +47,37 @@ Connect with Sealing enabled
 Verify that the server certificate is trusted
 
 #>
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = 'Default')]
     Param(
-        [Parameter(Position=0, Mandatory=$false)]
+        [Parameter(Mandatory=$false)]
         [string]
         $Server,
 
-        [Parameter(Position=1, Mandatory=$false)]
+        [Parameter(Mandatory=$false)]
         [ValidateSet('Anonymous','Basic','Negotiate','Ntlm','Digest','Sicily','Dpa','Msn','External','Kerberos')]
         $AuthType,
 
-        [Parameter(Position=3, Mandatory=$false)]
+        [Parameter(Mandatory=$false, ParameterSetName = 'CertAuth')]
         [string]
         $Certificate,
 
-        [Parameter(Position=4, Mandatory=$false)]
+        [Parameter(Mandatory=$false, ParameterSetName = 'CertAuth')]
         [string]
         $CertificatePassword,
+
+        [Parameter(Mandatory=$true, ParameterSetName = 'PasswordAuth')]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $Domain,
+
+        [Parameter(Mandatory=$true, ParameterSetName = 'PasswordAuth')]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $Username,
+
+        [Parameter(Mandatory=$true, ParameterSetName = 'PasswordAuth')]
+        [string]
+        $Password,
 
         [Parameter(Mandatory=$false)]
         [switch]
@@ -82,16 +96,21 @@ Verify that the server certificate is trusted
         $VerifyServerCertificate
     )
 
+    $c = $null
     try {
         $null = [System.Reflection.Assembly]::LoadWithPartialName("System.DirectoryServices.Protocols")
         $null = [System.Reflection.Assembly]::LoadWithPartialName("System.Net")
 
         
-        if($Server) {
-            $c = New-Object System.DirectoryServices.Protocols.LdapConnection $Server
-        } else {
-            $Ident = New-Object System.DirectoryServices.Protocols.LdapDirectoryIdentifier -ArgumentList @($null)
-            $c = New-Object System.DirectoryServices.Protocols.LdapConnection $Ident
+        $Ident = New-Object System.DirectoryServices.Protocols.LdapDirectoryIdentifier -ArgumentList @($Server)
+        $c = New-Object System.DirectoryServices.Protocols.LdapConnection $Ident
+
+        if($PSCmdlet.ParameterSetName -eq 'CertAuth') {
+            $Cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 @($Certificate, $CertificatePassword, 'Exportable')
+            $null = $c.ClientCertificates.Add($Cert)
+        } elseif($PSCmdlet.ParameterSetName -eq 'PasswordAuth') {
+            $cred = New-Object System.Net.NetworkCredential @($Username, $Password, $Domain)
+            $c.Credential = $cred
         }
 
         if($UseSSL) {
@@ -115,12 +134,13 @@ Verify that the server certificate is trusted
         }
 
         if(!$VerifyServerCertificate) {
-            $c.SessionOptions.VerifyServerCertificate = {$true}
-        }
+            $c.SessionOptions.VerifyServerCertificate = {
+                param($conn, [System.Security.Cryptography.X509Certificates.X509Certificate2]$cert) 
+                
+                Write-Verbose ($cert.ToString($true))
 
-        if($Certificate) {
-            $Cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 @($Certificate, $CertificatePassword, 'Exportable')
-            $null = $c.ClientCertificates.Add($Cert)
+                $true
+            }
         }
 
         # 1.3.6.1.4.1.4203.1.11.3 = OID for LDAP_SERVER_WHO_AM_I_OID (see MS-ADTS 3.1.1.3.4.2 LDAP Extended Operations)
@@ -136,5 +156,9 @@ Verify that the server certificate is trusted
         }
     } catch {
         Write-Error $_
+    } finally {
+        if($c) {
+            $c.Dispose()
+        }
     }
 }
