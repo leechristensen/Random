@@ -37,9 +37,26 @@ update_env_var() {
     sed -i "s/^$var_name=\"[^\"]*\"/$var_name=\"$new_value\"/" ".env"
 }
 
-sudo make
 
-# Generate the docker-compose and .env file
+
+########################################################################
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+source "${SCRIPT_DIR}/common.sh"
+
+# Include common.sh and call check_mythic_dir contained in common.sh
+common_check_mythic_dir
+
+
+# Check if the -u (update) flag was passed
+if [ "$1" == "-u" ]; then
+    echo "Updating Mythic..."
+    sudo git pull
+    #sudo git submodule update --init --recursive
+fi
+
+# Build mythic-cli and generate the docker-compose and .env file
+sudo make 
 sudo ./mythic-cli 2>&1 >/dev/null
 
 # Update config
@@ -49,10 +66,20 @@ update_env_var RABBITMQ_BIND_LOCALHOST_ONLY "false"
 update_env_var RABBITMQ_PASSWORD "a"
 update_env_var JUPYTER_TOKEN "a"
 update_env_var HASURA_SECRET "a"
+update_env_var NGINX_USE_VOLUME "false"
+
+# Configure nginx certs don't have to keep accepting the cert
+# Had to configure both certs and blockips.conf
+# - If I only did certs, mythic-cli wouldn't generate blockips.conf
+mkdir ./nginx-docker/ssl
+
+cp "${SCRIPT_DIR}/blockips.conf" ./nginx-docker/config/
+cp "${SCRIPT_DIR}/mythic-cert.crt" ./nginx-docker/ssl
+cp "${SCRIPT_DIR}/mythic-ssl.key" ./nginx-docker/ssl
 
 sudo ./mythic-cli start
 
-sleep 5
+#sleep 5
 
 echo
 echo Starting HTTP C2 profile...
@@ -62,9 +89,7 @@ echo
 echo Starting poseidon...
 sudo ./mythic-cli install github https://github.com/MythicAgents/poseidon -b Mythic3.3
 
-remove_older_docker_images
-
-SCRIPT_DIR=$(dirname "$(realpath "$0")")
+# Setup the poseidon payload
 python "${SCRIPT_DIR}/create_payload.py"
 
 echo "Done! You can now access Mythic at https://192.168.230.42:7443/new/callbacks"
